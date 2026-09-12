@@ -37,6 +37,19 @@ serverless attractive. **You can't appreciate the destination until you've felt 
    `AmazonSSMManagedInstanceCore` if you want Session Manager access (no SSH key needed).
 7. **Launch instance.** Note the **Public IPv4** once it's running.
 
+> **If the launch fails with "instance type not supported in your requested Availability
+> Zone":** some AZs don't offer `t3.micro` — `us-east-1e` is the usual culprit. This bites
+> mainly on the CLI, where picking the "first" subnet can land you in that AZ. Either let AWS
+> choose (omit the subnet) or pick a different one:
+>
+> ```bash
+> SUBNET=$(aws ec2 describe-subnets \
+>   --filters Name=vpc-id,Values=<your-vpc> Name=availability-zone,Values=us-east-1a \
+>   --query "Subnets[0].SubnetId" --output text)
+> ```
+>
+> `t3.micro` is fine in `us-east-1a/b/c/d/f`.
+
 ---
 
 ## 1.3 Install and Run the App

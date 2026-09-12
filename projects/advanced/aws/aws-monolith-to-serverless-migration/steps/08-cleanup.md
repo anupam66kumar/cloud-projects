@@ -50,7 +50,25 @@ aws iam delete-role --role-name BookstoreOrdersRole
 ## 8.5 EC2 + extras
 
 - **Terminate** `bookstore-monolith` if you haven't (Step 7).
-- Delete the **security group** you created for it (once the instance is gone).
+- Delete the **security group** you created for it — this only succeeds *after* the instance is
+  fully terminated, not merely shutting down, so wait first:
+
+  ```bash
+  aws ec2 wait instance-terminated --instance-ids <id>
+  aws ec2 delete-security-group --group-id <sg-id>
+  ```
+- Delete the **EC2 instance role + instance profile** if you created one in Step 1.6 for
+  Session Manager. An instance profile has to be emptied before it can be deleted, and a role
+  has to have its policies detached — so the order matters:
+
+  ```bash
+  aws iam remove-role-from-instance-profile \
+    --instance-profile-name BookstoreMonolithRole --role-name BookstoreMonolithRole
+  aws iam delete-instance-profile --instance-profile-name BookstoreMonolithRole
+  aws iam detach-role-policy --role-name BookstoreMonolithRole \
+    --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+  aws iam delete-role --role-name BookstoreMonolithRole
+  ```
 - Delete the CloudWatch log groups `/aws/lambda/bookstore-catalog` and
   `/aws/lambda/bookstore-orders` if you want a clean slate.
 - Empty/delete the **S3 snapshot** object/bucket from Step 7 if you no longer need it.
@@ -70,6 +88,7 @@ aws logs delete-log-group --log-group-name /aws/lambda/bookstore-orders
 - [ ] `Books` and `Orders` tables deleted
 - [ ] Both IAM roles (and their inline policies) deleted
 - [ ] EC2 instance terminated; its security group removed
+- [ ] EC2 instance role + instance profile deleted (if you made one for SSM)
 - [ ] Log groups / S3 snapshot / AMI cleaned up
 - [ ] **Billing → Cost Explorer** shows nothing from this project tomorrow
 

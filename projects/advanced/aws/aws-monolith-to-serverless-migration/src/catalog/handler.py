@@ -10,6 +10,7 @@ No comments on the obvious; only the routing note matters.
 
 import json
 import os
+from decimal import Decimal
 
 import boto3
 
@@ -19,9 +20,15 @@ APP_VERSION = os.environ.get("APP_VERSION", "catalog-1.0")
 _books = boto3.resource("dynamodb").Table(TABLE)
 
 
+def _json_default(value):
+    if isinstance(value, Decimal):
+        return int(value) if value % 1 == 0 else float(value)
+    return str(value)
+
+
 def _resp(status, body):
     return {"statusCode": status, "headers": {"content-type": "application/json"},
-            "body": json.dumps(body, default=str)}
+            "body": json.dumps(body, default=_json_default)}
 
 
 def handler(event, context):
