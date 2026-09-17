@@ -19,15 +19,45 @@ the migration done.
    counts with the SQLite `orders` table). Re-run the Step 2 exporter once more — it's
    idempotent — to catch any orders placed on the monolith *after* your first export.
 
+First re-run the exporter on the EC2 box, then check the result:
+
 ```bash
-# final reconciliation: counts should match
-sqlite3 bookstore.db "SELECT COUNT(*) FROM orders;"     # on the EC2 box
-aws dynamodb scan --table-name Orders --select COUNT --query Count
+python3 migrate_data.py     # idempotent — safe to run again
 ```
+
+**Don't compare raw counts.** It's tempting to run `COUNT(*)` on both sides and expect the same
+number, but after cutover that comparison will *always* fail — and it's not a bug. DynamoDB now
+holds two kinds of orders:
+
+- orders that came from the monolith (these came across in the export), **plus**
+- orders placed through the new API since cutover, which **never existed in SQLite at all**
+
+So DynamoDB is legitimately *larger* than SQLite. What you actually need to prove is that
+nothing was **lost**: every order id in SQLite must exist in DynamoDB. That's a subset check,
+not an equality check.
+
+```bash
+# on the EC2 box — every monolith order id
+sqlite3 bookstore.db "SELECT id FROM orders;" | sort > /tmp/sqlite_ids.txt
+
+# every order id now in DynamoDB
+aws dynamodb scan --table-name Orders --query "Items[].id.S" --output text \
+  | tr '\t' '\n' | sort > /tmp/ddb_ids.txt
+
+# anything listed here was LOST — the list must be empty
+comm -23 /tmp/sqlite_ids.txt /tmp/ddb_ids.txt
+```
+
+An empty result means zero data loss and you're safe to retire the box. If ids *do* appear,
+re-run the exporter and check its output for errors before going any further.
 
 > **Why reconcile twice?** Between your first export (Step 2) and cutover (Step 6), the
 > monolith may have taken more orders. The final idempotent re-export guarantees **zero data
 > loss** — the cardinal rule of any migration.
+
+> **Why the counts drift, concretely.** In a real run of this lab: SQLite ended with 2 orders,
+> DynamoDB with 5. The 3 extra were placed through the new API after cutover. Counts differed;
+> the subset check passed. Both facts were correct.
 
 ---
 
@@ -77,7 +107,7 @@ serverless payoff the monolith couldn't give you — earned through a controlled
 ## Checkpoint
 
 - [ ] Monolith network traffic has flatlined; no front-door route targets it
-- [ ] `Orders` count in DynamoDB matches the SQLite `orders` count (final reconcile)
+- [ ] Every SQLite order id exists in DynamoDB (subset check is empty — counts need **not** match)
 - [ ] A final copy of `bookstore.db` is safe in S3 (and/or an AMI exists)
 - [ ] Instance **stopped**, observed, then **terminated**
 - [ ] The API URL serves the whole bookstore with no EC2 in the path

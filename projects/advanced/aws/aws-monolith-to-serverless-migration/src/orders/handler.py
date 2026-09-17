@@ -10,6 +10,7 @@ the 'Books' table (catalog), which is why its role gets read access to Books too
 
 import json
 import os
+from decimal import Decimal
 import uuid
 
 import boto3
@@ -23,9 +24,15 @@ _orders = _ddb.Table(ORDERS_TABLE)
 _books = _ddb.Table(BOOKS_TABLE)
 
 
+def _json_default(value):
+    if isinstance(value, Decimal):
+        return int(value) if value % 1 == 0 else float(value)
+    return str(value)
+
+
 def _resp(status, body):
     return {"statusCode": status, "headers": {"content-type": "application/json"},
-            "body": json.dumps(body, default=str)}
+            "body": json.dumps(body, default=_json_default)}
 
 
 def handler(event, context):
